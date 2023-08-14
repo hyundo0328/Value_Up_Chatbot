@@ -38,9 +38,7 @@ data['recom_total'] = data['who'] + " / " + data['age'] + " / " + data['when']
 model = SentenceTransformer("sentence-transformers/distiluse-base-multilingual-cased-v2") # 사용할 모델
 data['recom_embeddings'] = data['recom_total'].apply(lambda x : model.encode(x))
 data['desc_embeddings'] = data['title'].apply(lambda x : model.encode(x))
-# print(data.shape)
-# print(data.head())
-data.to_csv('./data.csv', encoding='utf-8-sig')
+data.to_csv('./data_embeddings.csv', encoding='utf-8-sig')
 
 ''' 2-2 Embdding vector 추출 '''
 # OpenAI Embedding 활용하여 Embedding vector 추출
@@ -60,7 +58,7 @@ data.to_csv('./data.csv', encoding='utf-8-sig')
 
 
 ''' 2-3 cosine 유사도 구현 '''
-# top_k = 1
+top_k = 5
 def get_query_sim_top_k(query, model, df, top_k):
     query_encode = model.encode(query)
     cos_scores = util.pytorch_cos_sim(query_encode, df['recom_embeddings'])[0]
@@ -73,10 +71,15 @@ def get_overview_sim_top_k(desc, model, df, top_k):
     top_results = torch.topk(cos_scores, k=top_k)
     return top_results
 
-# query = "30대 직장인을 위한 3월 정책 추천해줘 "
-# top_result = get_query_sim_top_k(query, model, data, top_k)
-# print(top_result)
-# print(data.iloc[top_result[1].numpy(), :][['title', 'who', 'age', 'when']])
+query = "5월에서 시행하는 고등학생에게 적합한 정책 추천해줘"
+top_result = get_query_sim_top_k(query, model, data, top_k)
+values, indexs = get_query_sim_top_k(query, model, data, top_k)
+print(top_result)
+
+# print("values :",values[0])
+# print("indexs :",indexs[0])
+# print("top_result :",top_result[0][0])
+print(data.iloc[top_result[1].numpy(), :][['title', 'who', 'age', 'when']])
 
 
 
@@ -101,13 +104,13 @@ user_msg_history = []
 def set_prompt(intent, query, msg_prompt_init, model):
     '''prompt 형태를 만들어주는 함수'''
     m = dict()
-    # 검색 또는 추천이면
+    # 추천이면
     if ('recom' in intent) or ('search' in intent):
-        msg = msg_prompt_init['recom'] # 시스템 메세지를 가지고오고
+        msg = msg_prompt_init['recom']
         # print("recommend : ", msg)
     # 설명문이면
     elif 'desc' in intent:
-        msg = msg_prompt_init['desc'] # 시스템 메세지를 가지고오고
+        msg = msg_prompt_init['desc']
         # print("description : ", msg)
     # intent 파악
     else:
@@ -136,7 +139,7 @@ def user_interact(query, model, msg_prompt_init):
     intent_data = set_prompt(user_intent, query, msg_prompt_init, model)
     intent_data_msg = get_chatgpt_msg(intent_data).replace("\n", "").strip()\
 
-    # 3-1. 추천 또는 검색이면
+    # 3-1. 추천이면
     if ('recom' in user_intent) or ('search' in user_intent):
         recom_msg = str()
 
@@ -145,20 +148,21 @@ def user_interact(query, model, msg_prompt_init):
         #     query = user_msg_history[-1]['content']['recom_total']
 
         # 유사 아이템 가져오기
-        top_result = get_query_sim_top_k(query, model, data, top_k=1 if 'recom' in user_intent else 1)
+        top_result = get_query_sim_top_k(query, model, data, top_k=3 if 'recom' in user_intent else 3)
         #print("top_result : ", top_result)
 
         # 검색이면, 자기 자신의 컨텐츠는 제외
         top_index = top_result[1].numpy() if 'recom' in user_intent else top_result[1].numpy()[1:]
-        #print("top_index : ", top_index)
+        # print("top_index : ", top_index)
 
         # 정책명, 대상, 기간, 링크
         r_set_d = data.iloc[top_index, :][['title', 'who', 'when','link']]
         r_set_d = json.loads(r_set_d.to_json(orient="records"))
 
-        count = 0
-        recom_msg += "\n"
+        # 3가지를 되물으면서 연속으로 추천해주는 방식
         for r in r_set_d:
+            count = 0
+            recom_msg = "\n"
             for _, v in r.items():
                 if(count == 0):
                     recom_msg += f"{v} 정책으로 "
@@ -170,9 +174,18 @@ def user_interact(query, model, msg_prompt_init):
                     recom_msg += "자세한 설명은 아래의 링크를 클릭하여 접속해보시기 바랍니다.\n"
                     recom_msg += f"{v}\n"
                 count += 1
-        user_msg_history.append({'role' : 'assistant', 'content' : f"{intent_data_msg} {str(recom_msg)}"})
-        print(f"{recom_msg}") 
-        print("더 궁금하신 것이 있다면 다시 질문해주시면 감사하겠습니다.\n")
+
+            user_msg_history.append({'role' : 'assistant', 'content' : f"{intent_data_msg} {str(recom_msg)}"})
+            print(f"{recom_msg}") 
+            print("\n위의 정책이 원하시는 답변이 되셨나요? ")
+            re_answer = input()
+            if(re_answer == "Y" or re_answer == "y" or re_answer == "네" or re_answer == "예"):
+                print("\n또 궁금하신 점이 있으시면 질문해주세요.")
+                print("감사합니다.")
+                break
+            else:
+                print("\n그렇다면 이 정책은 어떠신가요?")
+
 
     # 3-2. 설명이면
     elif 'desc' in user_intent:
@@ -208,7 +221,7 @@ while(True):
         print("또 궁금하신 점이 있으시면 물어봐주세요.")
         break
     elif(query == "N"):
-        print("~~ 키워드 넣으면 더 정확한 답변을 얻을 수 있어요.")
+        print("대상, 나이, 기간 등의 키워드 넣으면 더 정확한 답변을 얻을 수 있어요.")
         re_query = input()
         user_interact(re_query, model, copy.deepcopy(msg_prompt))
     else:
