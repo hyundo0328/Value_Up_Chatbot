@@ -26,7 +26,6 @@ from dotenv import load_dotenv
 
 ''' OpenAI API 불러오기 '''
 load_dotenv()
-openai.api_key = "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"
 
 
 ''' 2-1 데이터 준비 '''
