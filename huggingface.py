@@ -103,12 +103,12 @@ def set_prompt(intent, query, msg_prompt_init, model):
     m = dict()
     # 검색 또는 추천이면
     if ('recom' in intent) or ('search' in intent):
-        msg = msg_prompt_init['recom']
-    
+        msg = msg_prompt_init['recom'] # 시스템 메세지를 가지고오고
+        # print("recommend : ", msg)
     # 설명문이면
     elif 'desc' in intent:
-        msg = msg_prompt_init['desc']
-    
+        msg = msg_prompt_init['desc'] # 시스템 메세지를 가지고오고
+        # print("description : ", msg)
     # intent 파악
     else:
         msg = msg_prompt_init['intent']
@@ -141,8 +141,8 @@ def user_interact(query, model, msg_prompt_init):
         recom_msg = str()
 
         # 기존에 메세지가 있으면 쿼리로 대체
-        if (len(user_msg_history) > 0 ) and (user_msg_history[-1]['role'] == 'assistant'):
-            query = user_msg_history[-1]['content']['recom_total']
+        # if (len(user_msg_history) > 0 ) and (user_msg_history[-1]['role'] == 'assistant'):
+        #     query = user_msg_history[-1]['content']['recom_total']
 
         # 유사 아이템 가져오기
         top_result = get_query_sim_top_k(query, model, data, top_k=1 if 'recom' in user_intent else 1)
@@ -158,17 +158,18 @@ def user_interact(query, model, msg_prompt_init):
 
         count = 0
         recom_msg += "\n"
-        for _, v in r_set_d.items():
-            if(count == 0):
-                recom_msg += f"{v} 정책으로 "
-            elif(count == 1):
-                recom_msg += f"{v} 대상에게 "
-            elif(count == 2):
-                recom_msg += f"{v} 기간 동안 시행하는 정책입니다.\n\n"
-            elif(count == 3):
-                recom_msg += "자세한 설명은 아래의 링크를 클릭하여 접속해보시기 바랍니다.\n"
-                recom_msg += f"{v}\n"
-            count += 1
+        for r in r_set_d:
+            for _, v in r.items():
+                if(count == 0):
+                    recom_msg += f"{v} 정책으로 "
+                elif(count == 1):
+                    recom_msg += f"{v} 대상에게 "
+                elif(count == 2):
+                    recom_msg += f"{v} 기간 동안 시행하는 정책입니다.\n\n"
+                elif(count == 3):
+                    recom_msg += "자세한 설명은 아래의 링크를 클릭하여 접속해보시기 바랍니다.\n"
+                    recom_msg += f"{v}\n"
+                count += 1
         user_msg_history.append({'role' : 'assistant', 'content' : f"{intent_data_msg} {str(recom_msg)}"})
         print(f"{recom_msg}") 
         print("더 궁금하신 것이 있다면 다시 질문해주시면 감사하겠습니다.\n")
@@ -183,18 +184,19 @@ def user_interact(query, model, msg_prompt_init):
 
         count = 0
         desc_msg += "\n"
-        for _,v in r_set_d.items():
-            if(count == 0):
-                desc_msg += f"{v} 정책이란 "
-            elif(count == 1):
-                desc_msg += f"{v} 하는 정책입니다.\n"
-            elif(count == 2):
-                desc_msg += "자세한 설명은 아래의 링크를 클릭하여 접속해보시기 바랍니다.\n"
-                desc_msg += f"{v}\n"
-            count += 1
+        for r in r_set_d:
+            for _, v in r.items():
+                if(count == 0):
+                    desc_msg += f"{v} 정책이란 "
+                elif(count == 1):
+                    desc_msg += f"{v} 하는 정책입니다.\n"
+                elif(count == 2):
+                    desc_msg += "자세한 설명은 아래의 링크를 클릭하여 접속해보시기 바랍니다.\n"
+                    desc_msg += f"{v}\n"
+                count += 1
         user_msg_history.append({'role' : 'assistant', 'content' : f"{intent_data_msg} {str(desc_msg)}"})
         print(f"{desc_msg}")
-        print("\n위의 정책이 원하시는 답변이 되셨나요? ")
+        print("더 궁금하신 것이 있다면 다시 질문해주시면 감사하겠습니다.\n")
 
 while(True):
     query = input()
@@ -206,7 +208,7 @@ while(True):
         print("또 궁금하신 점이 있으시면 물어봐주세요.")
         break
     elif(query == "N"):
-        print("대상, 나이, 기간 등의 키워드 상세하게 적으시면 더 정확한 답변을 얻을 수 있어요.")
+        print("~~ 키워드 넣으면 더 정확한 답변을 얻을 수 있어요.")
         re_query = input()
         user_interact(re_query, model, copy.deepcopy(msg_prompt))
     else:
