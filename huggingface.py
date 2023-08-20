@@ -40,7 +40,7 @@ data['recom_embeddings'] = data['recom_total'].apply(lambda x : model.encode(x))
 data['desc_embeddings'] = data['title'].apply(lambda x : model.encode(x))
 # print(data.shape)
 # print(data.head())
-data.to_csv('./data.csv', encoding='utf-8-sig')
+data.to_csv('./data_embeddings.csv', encoding='utf-8-sig')
 
 ''' 2-2 Embdding vector 추출 '''
 # OpenAI Embedding 활용하여 Embedding vector 추출
@@ -83,16 +83,20 @@ def get_overview_sim_top_k(desc, model, df, top_k):
 ''' 2-5 ChatGPT를 활용한 추천 시스템 로직 설계, 코드 구현 '''
 msg_prompt = {
     'recom' : {
-                'system' : "너는 user의 질문 의도를 이해하는 데 도움이 되는 assistant입니다.",
+                'system' : "너는 user에게 정책을 추천해주는 assistant입니다.",
                 'user' : "당연하지!'로 시작하는 간단한 인사말 1문장을 작성해. 추천해주겠다는 말을 해줘.",
               },
     'desc' : {
-                'system' : "너는 user의 질문 의도를 이해하는 데 도움이 되는 assistant입니다.",
+                'system' : "너는 user에게 정책을 설명해주는 assistant입니다.",
+                'user' : "'당연하지!'로 시작하는 간단한 인사말 1문장을 작성하여 user에게 정책을 설명해줘.",
+              },
+    'category' : {
+                'system' : "너는 category를 기반으로 정책을 알려주는 assistant입니다.",
                 'user' : "'당연하지!'로 시작하는 간단한 인사말 1문장을 작성하여 user에게 정책을 설명해줘.",
               },
     'intent' : {
                 'system' : "너는 user의 질문 의도를 이해하는 도움을 주는 assistant입니다.",
-                'user' : "아래 문장은 'description','recommend', 중 속하는 categories만 보여라."
+                'user' : "아래 문장은 'description','recommend','category' 중 속하는 것만 보여라."
                 }
 }
 
@@ -101,14 +105,16 @@ user_msg_history = []
 def set_prompt(intent, query, msg_prompt_init, model):
     '''prompt 형태를 만들어주는 함수'''
     m = dict()
-    # 검색 또는 추천이면
+    # 추천이면
     if ('recom' in intent) or ('search' in intent):
         msg = msg_prompt_init['recom'] # 시스템 메세지를 가지고오고
-        # print("recommend : ", msg)
-    # 설명문이면
+    # 설명이면
     elif 'desc' in intent:
         msg = msg_prompt_init['desc'] # 시스템 메세지를 가지고오고
-        # print("description : ", msg)
+    # 카테고리이면
+    elif 'category' in intent:
+        msg = msg_prompt_init['category'] # 시스템 메세지를 가지고오고
+    
     # intent 파악
     else:
         msg = msg_prompt_init['intent']
@@ -136,13 +142,44 @@ def user_interact(query, model, msg_prompt_init):
     intent_data = set_prompt(user_intent, query, msg_prompt_init, model)
     intent_data_msg = get_chatgpt_msg(intent_data).replace("\n", "").strip()\
 
-    # 3-1. 추천 또는 검색이면
-    if ('recom' in user_intent) or ('search' in user_intent):
-        recom_msg = str()
+    # 3. category이면
+    if ('category' in user_intent):
+        category_msg = str()
 
-        # 기존에 메세지가 있으면 쿼리로 대체
-        # if (len(user_msg_history) > 0 ) and (user_msg_history[-1]['role'] == 'assistant'):
-        #     query = user_msg_history[-1]['content']['recom_total']
+        # 유사 아이템 가져오기
+        top_result = get_query_sim_top_k(query, model, data, top_k=1 if 'category' in user_intent else 1)
+        #print("top_result : ", top_result)
+
+        # 검색이면, 자기 자신의 컨텐츠는 제외
+        top_index = top_result[1].numpy() if 'category' in user_intent else top_result[1].numpy()[1:]
+        #print("top_index : ", top_index)
+
+        # 정책명, 대상, 기간, 링크
+        r_set_d = data.iloc[top_index, :][['title', 'who', 'when','link']]
+        r_set_d = json.loads(r_set_d.to_json(orient="records"))
+
+        count = 0
+        category_msg += "\n"
+        for r in r_set_d:
+            for _, v in r.items():
+                if(count == 0):
+                    category_msg += f"{v} 정책으로 "
+                elif(count == 1):
+                    category_msg += f"{v} 대상에게 "
+                elif(count == 2):
+                    category_msg += f"{v} 기간 동안 시행하는 정책입니다.\n\n"
+                elif(count == 3):
+                    category_msg += "자세한 설명은 아래의 링크를 클릭하여 접속해보시기 바랍니다.\n"
+                    category_msg += f"{v}\n"
+                count += 1
+        user_msg_history.append({'role' : 'assistant', 'content' : f"{intent_data_msg} {str(category_msg)}"})
+        category_msg += "더 궁금하신 것이 있다면 다시 질문해주시면 감사하겠습니다.\n"
+
+        return category_msg
+
+    # 3-1. 추천 또는 검색이면
+    elif ('recom' in user_intent):
+        recom_msg = str()
 
         # 유사 아이템 가져오기
         top_result = get_query_sim_top_k(query, model, data, top_k=1 if 'recom' in user_intent else 1)
@@ -171,8 +208,9 @@ def user_interact(query, model, msg_prompt_init):
                     recom_msg += f"{v}\n"
                 count += 1
         user_msg_history.append({'role' : 'assistant', 'content' : f"{intent_data_msg} {str(recom_msg)}"})
-        print(f"{recom_msg}") 
-        print("더 궁금하신 것이 있다면 다시 질문해주시면 감사하겠습니다.\n")
+        recom_msg += "더 궁금하신 것이 있다면 다시 질문해주시면 감사하겠습니다.\n"
+
+        return recom_msg
 
     # 3-2. 설명이면
     elif 'desc' in user_intent:
@@ -195,8 +233,9 @@ def user_interact(query, model, msg_prompt_init):
                     desc_msg += f"{v}\n"
                 count += 1
         user_msg_history.append({'role' : 'assistant', 'content' : f"{intent_data_msg} {str(desc_msg)}"})
-        print(f"{desc_msg}")
-        print("더 궁금하신 것이 있다면 다시 질문해주시면 감사하겠습니다.\n")
+        desc_msg += "더 궁금하신 것이 있다면 다시 질문해주시면 감사하겠습니다.\n"
+        
+        return desc_msg
 
 while(True):
     query = input()
@@ -210,6 +249,6 @@ while(True):
     elif(query == "N"):
         print("~~ 키워드 넣으면 더 정확한 답변을 얻을 수 있어요.")
         re_query = input()
-        user_interact(re_query, model, copy.deepcopy(msg_prompt))
+        print(user_interact(re_query, model, copy.deepcopy(msg_prompt)))
     else:
-        user_interact(query, model, copy.deepcopy(msg_prompt))
+        print(user_interact(query, model, copy.deepcopy(msg_prompt)))
