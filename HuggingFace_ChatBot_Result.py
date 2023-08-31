@@ -150,7 +150,7 @@ def user_interact(query, model, msg_prompt_init):
            (설명 파트도 동일하게 수정)
         '''
         recom_msg += "\n입력하신 내용 기반으로 가장 적합한 정책을 추천하겠습니다.\n"
-        for _, v in r_set_d[tmp].items():
+        for _, v in r_set_d[0].items():
             if(count == 0):
                 recom_msg += f"정책명 : {v}\n"
             elif(count == 1):
