@@ -14,6 +14,7 @@ import sys
 import csv
 import json
 
+from datetime import datetime
 from ast import literal_eval
 from sentence_transformers import SentenceTransformer, util
 from transformers import AutoTokenizer, AutoModel
@@ -130,7 +131,7 @@ def user_interact(query, model, msg_prompt_init):
         recom_msg = str()
 
         # 유사 아이템 가져오기
-        top_result = get_query_sim_top_k(query, model, data, top_k=1 if 'recom' in user_intent else 1) # 답변 개수 1개
+        top_result = get_query_sim_top_k(query, model, data, top_k=3 if 'recom' in user_intent else 3) # 답변 개수 1개
         #print("top_result : ", top_result)
 
         # 검색이면, 자기 자신의 컨텐츠는 제외
@@ -149,9 +150,9 @@ def user_interact(query, model, msg_prompt_init):
            (설명 파트도 동일하게 수정)
         '''
         recom_msg += "\n입력하신 내용 기반으로 가장 적합한 정책을 추천하겠습니다.\n"
-        for _, v in r_set_d[0].items():
+        for _, v in r_set_d[tmp].items():
             if(count == 0):
-                recom_msg += f"정책명 : '{v}'\n"
+                recom_msg += f"정책명 : {v}\n"
             elif(count == 1):
                 recom_msg += f"대상 : {v}\n"
             elif(count == 2):
@@ -186,12 +187,31 @@ def user_interact(query, model, msg_prompt_init):
 
         print(f"{desc_msg}")
 
-query = input()
+count = 1
+print("안녕하세요! 저는 영암군의 청소년 정책을 추천해주는 남생이에요~ 어떤 정책을 찾고 있나요?\n")
+
+query = str(input())
+if(query.find("지금")>=0):
+    query = query.replace("지금", str(datetime.now().month)+"월 "+str(datetime.now().day)+"일")
+if(query.find("현재")>=0):
+    query = query.replace("현재", str(datetime.now().month)+"월 "+str(datetime.now().day)+"일")
+if(query.find("알려")>=0):
+    query = query.replace("알려","추천해")
+
 user_interact(query, model, copy.deepcopy(msg_prompt))
-desired_answer = input("원하시는 답변이 되셨나요? (yes/no): ")
-if desired_answer.lower() == "yes":
-    print("더 궁금하신 것이 있다면 다시 질문해주세요.\n") # 출력 내용 수정
-    exit(0)
-else:
-    query = input("정확한 답변을 원하시면 구체적인 키워드를 포함해서 질문해주세요: ")
-    user_interact(query, model, copy.deepcopy(msg_prompt))
+while(True):
+    desired_answer = input("원하시는 답변이 되셨나요? (yes/no): ")
+
+    if(count == 3):
+        print("찾으시는 정책이 없는 것 같아요.")
+        print("도움이 필요하시면 다시 질문해주세요.")
+        break
+
+    if desired_answer.lower() == "yes":
+        print("더 궁금하신 것이 있다면 다시 질문해주세요.\n") # 출력 내용 수정
+        break
+    else:
+        query = input("\n정확한 답변을 원하시면 기간, 나이 등 구체적인 키워드를 포함해서 질문해주세요: ")
+        user_interact(query, model, copy.deepcopy(msg_prompt))
+    
+    count += 1
